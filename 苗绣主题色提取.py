@@ -8,6 +8,18 @@ import webcolors
 import json
 import cv2
 import math
+import argparse
+
+
+def parse_option():
+    parser = argparse.ArgumentParser('苗绣主题色提取配置', add_help=False)
+    parser.add_argument('--folder_path', type=str, required=True, metavar='PATH', help='需要计算的图片所在目录')
+    parser.add_argument('--img_width', type=int, default=256, help='图片patch的宽度，默认为256')
+    parser.add_argument('--img_height', type=int, default=256, help='图片patch的高度， 默认为256')
+    parser.add_argument('--project_name', type=str, required=True, help='项目的名称')
+    parser.add_argument('--plt_save_dir', type=str, metavar='PATH', default='/', help='结果保存的地址，默认为当前目录')
+    args = parser.parse_args()
+    return args
 
 
 def get_image(folder_path):
@@ -167,6 +179,14 @@ def get_colour_name(requested_colour):
 
 
 def plot_color_clusters(cluster_map, rgb_img=None, plt_save_dir=None, imshow=False):
+    '''
+    更具 cluster_map 绘制图片
+    :param cluster_map: 包含中心点信息
+    :param rgb_img: rgb格式图片，如果该参数不为空则表示绘制第一次聚类单张图片的结果，否则为第二次聚类所有图片的聚类结果
+    :param plt_save_dir: 图片保存位置
+    :param imshow: 是否绘制出图片
+    :return:
+    '''
     # grouping the data by color hex code and color name to find the total count of
     # pixels (data points) in a particular cluster
     mydf = cluster_map.groupby(['color', 'color_name']).agg({'position': 'count'}).reset_index().rename(
@@ -234,41 +254,36 @@ def hsv_main_color_extraction(image_vector, k):
 
 def main():
     # 开始第一次聚类
-    image_paths, image_names = get_image(folder_path)
+    image_paths, image_names = get_image(conf.folder_path)
+    print("一共发现了{0}张图片".format(len(image_names)))
     all_centers = []
     # 读取图片
     for i, image_path in enumerate(image_paths):
         image_name = image_names[i]
-        hsv_img, rgb_img = read_images(image_path, img_height, img_width)
+        print("正在处理图片{0}".format(image_name))
+        hsv_img, rgb_img = read_images(image_path, conf.img_height, conf.img_width)
         # 对hsv图片进行聚类
         image_vector = torch.from_numpy(hsv_img.reshape((-1, 3)))
         cluster_map, cluster_centers = hsv_main_color_extraction(image_vector, 5)
         for center in cluster_centers.tolist():
             all_centers.append(center)
-        print("文件名为:{0}".format(image_name))
         # 绘制图片信息
-        plot_color_clusters(cluster_map, rgb_img, os.path.join(plt_save_dir, image_name))
+        plot_color_clusters(cluster_map, rgb_img, os.path.join(conf.plt_save_dir, image_name))
     # 第二次聚类
     all_centers = torch.Tensor(all_centers)
     cluster_map, _ = hsv_main_color_extraction(all_centers, 10)
     # 绘制图片信息
-    print("{0}的主题色为：".format(file_name))
-    plot_color_clusters(cluster_map, plt_save_dir=os.path.join(plt_save_dir, 'result.jpg'))
+    print("{0}的主题色为：".format(conf.project_name))
+    plot_color_clusters(cluster_map, plt_save_dir=os.path.join(conf.plt_save_dir, conf.project_name + '_result.jpg'))
 
 
 if __name__ == '__main__':
     # 加载colors.json文件，用于显示颜色名称
-    with open(r'/home/wusong/sdb/lpj/notebooks/colors.json') as clr:
+    with open('colors.json') as clr:
         color_dict = json.load(clr)
-    # 需要计算的图片所在目录
-    folder_path = r'/home/wusong/sdb/lpj/苗绣/2020-5-数纱绣'
-    # 图片最大长宽
-    img_width = 256
-    img_height = 256
-    file_name = '2020-5-数纱绣'
-    # 结果保存路径
-    plt_save_dir = r'/home/wusong/sdb/lpj/苗绣/result/2020-5-数纱绣'
+    # 获取配置信息
+    conf = parse_option()
     # 检查保存路径是否存在，若不就创建路径
-    if not os.path.isdir(plt_save_dir):
-        os.makedirs(plt_save_dir)
+    if not os.path.isdir(conf.plt_save_dir):
+        os.makedirs(conf.plt_save_dir)
     main()
