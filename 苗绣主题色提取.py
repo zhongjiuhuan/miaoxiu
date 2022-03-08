@@ -189,11 +189,9 @@ def plot_color_clusters(cluster_map, rgb_img=None, plt_save_dir=None, imshow=Fal
     '''
     # grouping the data by color hex code and color name to find the total count of
     # pixels (data points) in a particular cluster
-    mydf = cluster_map.groupby(['color', 'color_name']).agg({'position': 'count'}).reset_index().rename(
+    # print(cluster_map)
+    mydf = cluster_map.groupby(['color', 'color_name', 'H', 'S', 'V']).agg({'position': 'count'}).reset_index().rename(
         columns={"position": "count"})
-    #     mydf['H'] = [i[0] for i in cluster_center.tolist()]
-    #     mydf['S'] = [i[1]/255*100 for i in cluster_center.tolist()]
-    #     mydf['V'] = [i[2]/255*100 for i in cluster_center.tolist()]
     mydf['Percentage'] = round((mydf['count'] / mydf['count'].sum()) * 100, 1)
     print(mydf)
 
@@ -217,6 +215,7 @@ def plot_color_clusters(cluster_map, rgb_img=None, plt_save_dir=None, imshow=Fal
     if plt_save_dir is not None:
         plt.savefig(plt_save_dir)
     plt.close('all')
+    return mydf
 
 
 def hsv_main_color_extraction(image_vector, k):
@@ -249,6 +248,11 @@ def hsv_main_color_extraction(image_vector, k):
     cluster_map['cluster'] = cluster_ids_x
     cluster_map['color'] = [hex_colors[x] for x in cluster_map['cluster']]
     cluster_map['color_name'] = [color_name[x] for x in cluster_map['color']]
+    # HSV值的显示，会影响计算速度
+    cluster_map['H'] = [int(cluster_centers[x][0] * 2) for x in cluster_map['cluster']]
+    cluster_map['S'] = [int(cluster_centers[x][1] / 255 * 100) for x in cluster_map['cluster']]
+    cluster_map['V'] = [int(cluster_centers[x][2] / 255 * 100) for x in cluster_map['cluster']]
+
     return cluster_map, cluster_centers
 
 
@@ -256,11 +260,16 @@ def main():
     # 开始第一次聚类
     image_paths, image_names = get_image(conf.folder_path)
     print("一共发现了{0}张图片".format(len(image_names)))
+    # 创建result.txt文件
+    result_file_name = os.path.join(conf.plt_save_dir, 'result.txt')
+    result_file = open(result_file_name, 'w')
     all_centers = []
     # 读取图片
     for i, image_path in enumerate(image_paths):
         image_name = image_names[i]
         print("正在处理图片{0}".format(image_name))
+        # 将文件名写入result.txt
+        result_file.write("图片名：" + image_name + '\n')
         hsv_img, rgb_img = read_images(image_path, conf.img_height, conf.img_width)
         # 对hsv图片进行聚类
         image_vector = torch.from_numpy(hsv_img.reshape((-1, 3)))
@@ -268,13 +277,21 @@ def main():
         for center in cluster_centers.tolist():
             all_centers.append(center)
         # 绘制图片信息
-        plot_color_clusters(cluster_map, rgb_img, os.path.join(conf.plt_save_dir, image_name))
+        mydf = plot_color_clusters(cluster_map, rgb_img, os.path.join(conf.plt_save_dir, image_name))
+        # 将图片详细数据写入result.txt
+        result_file.write(str(mydf) + '\n')
+
     # 第二次聚类
     all_centers = torch.Tensor(all_centers)
     cluster_map, _ = hsv_main_color_extraction(all_centers, 10)
     # 绘制图片信息
     print("{0}的主题色为：".format(conf.project_name))
-    plot_color_clusters(cluster_map, plt_save_dir=os.path.join(conf.plt_save_dir, conf.project_name + '_result.jpg'))
+    mydf = plot_color_clusters(cluster_map,
+                               plt_save_dir=os.path.join(conf.plt_save_dir, conf.project_name + '_result.jpg'))
+    # 将二次聚类详细数据写入result.txt
+    result_file.write("{0}的主题色为：".format(conf.project_name) + '\n')
+    result_file.write(str(mydf) + '\n')
+    result_file.close()
 
 
 if __name__ == '__main__':
